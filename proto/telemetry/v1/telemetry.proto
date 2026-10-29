@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package telemetry.v1;
+
+option go_package = "github.com/Mikewattoski/atrium/proto/telemetry/v1;telemetryv1";
+
+import "google/protobuf/timestamp.proto";
+
+message Reading {
+  string device_id = 1;
+  string metric = 2;
+  double value = 3;
+  google.protobuf.Timestamp ts = 4;
+}
+
+message Ack {
+  int64 accepted = 1;
+  int64 rejected = 2;
+}
+
+service TelemetryService {
+  // Client streams readings; server replies once with counts when the stream closes.
+  rpc StreamReadings(stream Reading) returns (Ack);
+}
