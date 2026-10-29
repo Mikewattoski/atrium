@@ -28,7 +28,9 @@ flowchart LR
     MQ -- "manual ack" --> PROC["Processor<br/>batching + alerts"]
     MQ -. "failed messages" .-> DLQ[("readings.dlq")]
     PROC -- "batch insert" --> PG[("PostgreSQL")]
+    PROC -- "latest value" --> RD[("Redis")]
     API["REST API<br/>Gin"] -- "queries" --> PG
+    API -- "cache-aside" --> RD
     USER["curl / dashboard"] --> API
 ```
 
@@ -39,6 +41,7 @@ flowchart LR
 | **RabbitMQ** | Durable buffer between ingest and storage. A topic exchange feeds `readings.q`, with a dead-letter exchange and queue for failures. |
 | **Processor** | Consumes in batches with manual acks, writes to PostgreSQL idempotently, and opens or resolves alerts. |
 | **PostgreSQL** | Devices, readings and alerts, with indexes for time-ordered queries. |
+| **Redis** | Newest reading per device (60 s TTL, LRU eviction) and the API rate limiter. Optional: if it is down, the API reads PostgreSQL. |
 | **REST API** | Devices, reading history (cursor pagination), latest reading and alerts. |
 
 ## Key design decisions
@@ -55,13 +58,15 @@ flowchart LR
 
 **Client streaming gRPC.** One long-lived stream per simulator, instead of one RPC per reading, cuts overhead for high-frequency telemetry.
 
+**Cache-aside with a newest-wins guard.** `/latest` reads Redis first and falls back to PostgreSQL, refilling the cache on a miss. The processor writes the cache only after the database commit. A Lua script overwrites a cached value only if the new timestamp is newer, so a late write can never replace fresher data. Redis problems are logged and never fail a request or a batch.
+
 **Keyset pagination.** The readings endpoint pages by timestamp cursor instead of `OFFSET`, so deep pages stay fast and use the `(device_id, ts DESC)` index.
 
 **Graceful shutdown everywhere.** `SIGINT`/`SIGTERM` drain in-flight work: the processor writes and acknowledges its current batch before exiting.
 
 ## Tech stack
 
-Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Gin · Docker Compose · golang-migrate
+Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Docker Compose · golang-migrate
 
 ## Quickstart
 
@@ -117,6 +122,8 @@ curl -s "localhost:8080/api/v1/alerts?status=open"
 
 Times are RFC 3339. Pass `next_cursor` back as `cursor` to fetch the next page.
 
+`/latest` responses include an `X-Cache: HIT|MISS` header. Requests are limited to 100 per minute per client IP, then the API answers `429` with a `Retry-After` header.
+
 ## Configuration
 
 All settings are environment variables with local defaults.
@@ -130,6 +137,9 @@ All settings are environment variables with local defaults.
 | `BATCH_SIZE` | `500` | processor |
 | `FLUSH_INTERVAL` | `1s` | processor |
 | `ALERT_TEMP_THRESHOLD` | `30` | processor |
+| `REDIS_ADDR` | `localhost:6379` | api, processor |
+| `CACHE_TTL` | `1m` | api, processor |
+| `RATE_LIMIT` | `100` (requests per minute per IP) | api |
 
 Example: `ALERT_TEMP_THRESHOLD=25 make run-processor`
 
@@ -151,6 +161,7 @@ Unit tests cover the service layer (pagination, validation), the ingest validati
 | Reading for an unknown device | Only that message is dead-lettered. The rest of the batch is stored. |
 | RabbitMQ restarts | Ingest and the processor reconnect automatically. |
 | Ingest restarts | The simulator logs the error and reconnects. |
+| Redis goes down | The API reads PostgreSQL, the processor keeps storing and acking, and the rate limiter fails open. Nothing is lost. |
 
 ## Project layout
 
@@ -166,6 +177,7 @@ internal/
   ingest/      gRPC server
   processor/   batching, alert logic, PostgreSQL store
   queue/       RabbitMQ topology, publisher, consumer
+  cache/       Redis latest-value cache and rate limiter
 proto/         gRPC contract
 migrations/    SQL schema (golang-migrate)
 seeds/         sample data
@@ -179,7 +191,7 @@ deploy/k8s/    Kubernetes manifests (planned)
 - [x] gRPC ingest service and device simulator
 - [x] RabbitMQ pipeline with confirms, manual acks and dead-lettering
 - [x] Batch processor with alerting
-- [ ] Redis cache-aside for latest readings and API rate limiting
+- [x] Redis cache-aside for latest readings and API rate limiting
 - [ ] Grafana dashboard
 - [ ] Dockerfiles for every service and full Compose stack
 - [ ] GitHub Actions CI (lint, race-detector tests, image build)

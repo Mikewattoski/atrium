@@ -42,6 +42,7 @@ type Processor struct {
 	store Store
 	opt   Options
 	stats stats // only touched from the Run goroutine
+	cache LatestWriter
 }
 
 func New(store Store, opt Options) *Processor {
@@ -138,6 +139,8 @@ func (p *Processor) HandleBatch(ctx context.Context, msgs []Msg) {
 	for _, it := range retry {
 		logErr("nack", it.msg.Nack(true))
 	}
+
+	p.updateCache(ctx, stored)
 
 	p.stats.stored += len(stored)
 	p.stats.dead += len(dead)

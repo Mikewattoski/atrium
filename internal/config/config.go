@@ -13,6 +13,11 @@ type Config struct {
 	DatabaseURL string
 	AMQPURL     string
 
+	// redis cache and API rate limit
+	RedisAddr string
+	CacheTTL  time.Duration
+	RateLimit int
+
 	// processor
 	BatchSize          int
 	FlushInterval      time.Duration
@@ -27,6 +32,9 @@ func Load() Config {
 		AMQPURL:     getenv("AMQP_URL", "amqp://guest:guest@localhost:5672/"),
 
 		BatchSize:          getenvInt("BATCH_SIZE", 500),
+		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
+		CacheTTL:           getenvDuration("CACHE_TTL", time.Minute),
+		RateLimit:          getenvInt("RATE_LIMIT", 100),
 		FlushInterval:      getenvDuration("FLUSH_INTERVAL", time.Second),
 		AlertTempThreshold: getenvFloat("ALERT_TEMP_THRESHOLD", 30),
 	}

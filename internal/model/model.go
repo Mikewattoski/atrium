@@ -19,7 +19,7 @@ type Device struct {
 }
 
 type Reading struct {
-	ID       int64     `json:"id"`
+	ID       int64     `json:"id,omitempty"`
 	DeviceID string    `json:"device_id"`
 	Metric   string    `json:"metric"`
 	Value    float64   `json:"value"`

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Mikewattoski/atrium/internal/model"
@@ -14,8 +15,22 @@ const (
 	maxLimit     = 1000
 )
 
+// LatestCache is an optional cache for the latest reading (cache-aside).
+// GetLatest returns (nil, nil) on a miss. An empty metric means "any metric".
+type LatestCache interface {
+	GetLatest(ctx context.Context, deviceID, metric string) (*model.Reading, error)
+	SetLatest(ctx context.Context, deviceID, metric string, r model.Reading) error
+}
+
 type Service struct {
-	repo repository.Repository
+	repo  repository.Repository
+	cache LatestCache
+}
+
+// WithCache enables cache-aside reads for GetLatest.
+func (s *Service) WithCache(c LatestCache) *Service {
+	s.cache = c
+	return s
 }
 
 func New(repo repository.Repository) *Service {
@@ -91,12 +106,30 @@ func (s *Service) GetReadings(ctx context.Context, deviceID string, q ReadingsQu
 	return page, nil
 }
 
-func (s *Service) GetLatest(ctx context.Context, deviceID, metric string) (*model.Reading, error) {
+// GetLatest is cache-aside: Redis first, PostgreSQL on a miss, then refill.
+// The bool reports whether the answer came from the cache. Cache errors are
+// logged and never fail the request.
+func (s *Service) GetLatest(ctx context.Context, deviceID, metric string) (*model.Reading, bool, error) {
+	if s.cache != nil {
+		r, err := s.cache.GetLatest(ctx, deviceID, metric)
+		if err != nil {
+			log.Printf("cache get failed, falling back to database: %v", err)
+		} else if r != nil {
+			return r, true, nil
+		}
+	}
+
 	r, err := s.repo.LatestReading(ctx, deviceID, metric)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return r, nil
+
+	if s.cache != nil {
+		if err := s.cache.SetLatest(ctx, deviceID, metric, *r); err != nil {
+			log.Printf("cache refill failed: %v", err)
+		}
+	}
+	return r, false, nil
 }
 
 func (s *Service) ListAlerts(ctx context.Context, status string, limit int) ([]model.Alert, error) {

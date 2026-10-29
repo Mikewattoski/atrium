@@ -16,8 +16,9 @@ import (
 )
 
 type Handler struct {
-	svc  *service.Service
-	ping func(ctx context.Context) error
+	svc     *service.Service
+	ping    func(ctx context.Context) error
+	limiter gin.HandlerFunc
 }
 
 func New(svc *service.Service, ping func(ctx context.Context) error) *Handler {
@@ -28,6 +29,9 @@ func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/health", h.health)
 
 	v1 := r.Group("/api/v1")
+	if h.limiter != nil {
+		v1.Use(h.limiter)
+	}
 	v1.GET("/devices", h.listDevices)
 	v1.GET("/devices/:id/readings", h.listReadings)
 	v1.GET("/devices/:id/latest", h.latest)
@@ -93,10 +97,15 @@ func (h *Handler) listReadings(c *gin.Context) {
 }
 
 func (h *Handler) latest(c *gin.Context) {
-	r, err := h.svc.GetLatest(c.Request.Context(), c.Param("id"), c.Query("metric"))
+	r, hit, err := h.svc.GetLatest(c.Request.Context(), c.Param("id"), c.Query("metric"))
 	if err != nil {
 		respondError(c, err)
 		return
+	}
+	if hit {
+		c.Header("X-Cache", "HIT")
+	} else {
+		c.Header("X-Cache", "MISS")
 	}
 	c.JSON(http.StatusOK, r)
 }

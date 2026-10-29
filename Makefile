@@ -60,3 +60,8 @@ run-processor:
 stats:
 > docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c "SELECT (SELECT count(*) FROM readings) AS readings, (SELECT count(*) FROM alerts WHERE status = 'open') AS open_alerts, (SELECT count(*) FROM alerts) AS total_alerts;"
 > docker compose exec rabbitmq rabbitmqctl list_queues name messages consumers
+
+.PHONY: redis-cli
+
+redis-cli:
+> docker compose exec redis redis-cli

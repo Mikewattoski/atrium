@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Mikewattoski/atrium/internal/cache"
 	"github.com/Mikewattoski/atrium/internal/config"
 	"github.com/Mikewattoski/atrium/internal/handler"
 	"github.com/Mikewattoski/atrium/internal/repository"
@@ -34,9 +35,16 @@ func main() {
 		log.Fatalf("db ping: %v", err)
 	}
 
+	rc := cache.New(cfg.RedisAddr, cfg.CacheTTL)
+	defer rc.Close()
+	if err := rc.Ping(ctx); err != nil {
+		log.Printf("redis unavailable (%v): serving from PostgreSQL only", err)
+	}
+
 	repo := repository.NewPostgres(pool)
-	svc := service.New(repo)
-	h := handler.New(svc, pool.Ping)
+	svc := service.New(repo).WithCache(rc)
+	h := handler.New(svc, pool.Ping).
+		WithLimiter(handler.RateLimit(rc, cfg.RateLimit, time.Minute))
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -49,7 +57,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("api listening on %s", cfg.HTTPAddr)
+		log.Printf("api listening on %s (cache ttl %s, rate limit %d/min)", cfg.HTTPAddr, cfg.CacheTTL, cfg.RateLimit)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server: %v", err)
 		}

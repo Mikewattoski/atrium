@@ -73,10 +73,10 @@ func TestStreamReadings(t *testing.T) {
 			name: "invalid readings are rejected, stream continues",
 			in: []*telemetryv1.Reading{
 				good,
-				rd("", "temperature", 1, now),            // empty device
-				rd("d", "m", math.NaN(), now),            // NaN value
-				{DeviceId: "d", Metric: "m", Value: 1},   // missing ts
-				rd("d", "m", 1, now.Add(time.Hour)),      // future ts
+				rd("", "temperature", 1, now),          // empty device
+				rd("d", "m", math.NaN(), now),          // NaN value
+				{DeviceId: "d", Metric: "m", Value: 1}, // missing ts
+				rd("d", "m", 1, now.Add(time.Hour)),    // future ts
 			},
 			wantAccepted: 1,
 			wantRejected: 4,
