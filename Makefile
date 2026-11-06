@@ -80,3 +80,47 @@ down-all:
 
 logs-app:
 > docker compose --profile app logs -f api ingest processor simulator
+
+.PHONY: k8s-cluster k8s-load k8s-up k8s-seed k8s-sim k8s-status k8s-stats k8s-forward k8s-down
+
+k8s-cluster:    ## create the local kind cluster
+> kind create cluster --name atrium
+
+k8s-load:       ## copy the locally built images into the cluster (run make docker-build first)
+> kind load docker-image atrium-api:local atrium-ingest:local atrium-processor:local atrium-simulator:local --name atrium
+
+k8s-up:         ## deploy infrastructure, run migrations, then the apps
+> kubectl apply -f deploy/k8s/00-namespace.yaml -f deploy/k8s/01-config.yaml
+> kubectl apply -f deploy/k8s/10-postgres.yaml -f deploy/k8s/11-redis.yaml -f deploy/k8s/12-rabbitmq.yaml
+> kubectl -n atrium rollout status statefulset/postgres --timeout=240s
+> kubectl -n atrium rollout status deployment/redis --timeout=180s
+> kubectl -n atrium rollout status deployment/rabbitmq --timeout=300s
+> kubectl -n atrium create configmap migrations --from-file=migrations --dry-run=client -o yaml | kubectl apply -f -
+> kubectl -n atrium delete job migrate --ignore-not-found
+> kubectl apply -f deploy/k8s/20-migrate-job.yaml
+> kubectl -n atrium wait --for=condition=complete job/migrate --timeout=240s
+> kubectl apply -f deploy/k8s/30-api.yaml -f deploy/k8s/31-ingest.yaml -f deploy/k8s/32-processor.yaml
+> kubectl -n atrium rollout status deployment/api --timeout=180s
+> kubectl -n atrium rollout status deployment/ingest --timeout=180s
+> kubectl -n atrium rollout status deployment/processor --timeout=180s
+> kubectl -n atrium get pods
+
+k8s-seed:       ## register the 100 simulated devices
+> kubectl -n atrium exec -i postgres-0 -- sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < seeds/devices.sql
+
+k8s-sim:        ## start the simulator (after seeding)
+> kubectl apply -f deploy/k8s/40-simulator.yaml
+> kubectl -n atrium rollout status deployment/simulator --timeout=120s
+
+k8s-status:
+> kubectl -n atrium get pods,svc
+
+k8s-stats:
+> kubectl -n atrium exec postgres-0 -- sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "SELECT (SELECT count(*) FROM readings) AS readings, (SELECT count(*) FROM alerts) AS alerts;"'
+> kubectl -n atrium exec deploy/rabbitmq -- rabbitmqctl list_queues name messages consumers
+
+k8s-forward:    ## API on http://localhost:18080 (Ctrl+C to stop)
+> kubectl -n atrium port-forward svc/api 18080:8080
+
+k8s-down:       ## delete the kind cluster
+> kind delete cluster --name atrium

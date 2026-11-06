@@ -68,7 +68,7 @@ flowchart LR
 
 ## Tech stack
 
-Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Docker (multi-stage, distroless) · Docker Compose · GitHub Actions · golang-migrate
+Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Docker (multi-stage, distroless) · Docker Compose · Kubernetes · GitHub Actions · golang-migrate
 
 ## Quickstart
 
@@ -109,6 +109,23 @@ make down-all       # stop everything
 ```
 
 Each service is built from one multi-stage `Dockerfile` into a small non-root distroless image.
+
+### Or run it on Kubernetes (kind)
+
+Requires `kubectl` and [`kind`](https://kind.sigs.k8s.io/).
+
+```bash
+make docker-build   # build the four images
+make k8s-cluster    # create a local cluster
+make k8s-load       # load the images into it
+make k8s-up         # Postgres, Redis, RabbitMQ, migrations Job, api, ingest, processor
+make k8s-seed       # register the 100 simulated devices
+make k8s-sim        # start the simulator
+make k8s-forward    # API on http://localhost:18080
+make k8s-down       # delete the cluster
+```
+
+The manifests in `deploy/k8s/` use a ConfigMap and Secret for configuration, a migration Job, readiness and liveness probes, resource requests and limits, and a hardened security context (non-root, read-only root filesystem, all capabilities dropped). The API and ingest run two replicas each, and two processor replicas compete for the same queue (idempotent writes make that safe).
 
 ## REST API
 
@@ -193,7 +210,7 @@ internal/
 proto/         gRPC contract
 migrations/    SQL schema (golang-migrate)
 seeds/         sample data
-deploy/k8s/    Kubernetes manifests (planned)
+deploy/k8s/    Kubernetes manifests (tested on kind)
 ```
 
 ## Roadmap
@@ -207,7 +224,7 @@ deploy/k8s/    Kubernetes manifests (planned)
 - [ ] Grafana dashboard
 - [x] Dockerfiles for every service and full Compose stack
 - [x] GitHub Actions CI (lint, race-detector tests, image build)
-- [ ] Kubernetes manifests with health probes
+- [x] Kubernetes manifests with health probes
 - [ ] Prometheus metrics
 
 ## Known limitations

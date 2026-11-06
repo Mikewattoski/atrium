@@ -1,0 +1,31 @@
+# The SQL files are mounted from a ConfigMap named "migrations", created by `make k8s-up`
+# straight from ./migrations so there is a single source of truth.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: atrium
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: migrate/migrate:v4.17.1
+          args: ["-path", "/migrations", "-database", "$(DATABASE_URL)", "up"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: atrium-secrets, key: DATABASE_URL}
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: migrations
+          configMap:
+            name: migrations

@@ -55,6 +55,19 @@ jobs:
       - name: Run golangci-lint
         run: golangci-lint run ./...
 
+  k8s:
+    name: Validate Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@latest
+      - name: Validate manifests
+        run: $(go env GOPATH)/bin/kubeconform -strict -summary deploy/k8s
+
   docker:
     name: Build image (${{ matrix.service }})
     runs-on: ubuntu-latest

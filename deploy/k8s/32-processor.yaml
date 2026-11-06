@@ -1,0 +1,45 @@
+# No Service and no probes: the processor only makes outbound connections, and the
+# distroless image has no shell for an exec probe. Kubernetes restarts it if it exits.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor
+  namespace: atrium
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: processor
+  template:
+    metadata:
+      labels:
+        app: processor
+    spec:
+      terminationGracePeriodSeconds: 30   # time to flush and ack the in-flight batch
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: processor
+          image: atrium-processor:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: atrium-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: atrium-secrets, key: DATABASE_URL}
+            - name: AMQP_URL
+              valueFrom:
+                secretKeyRef: {name: atrium-secrets, key: AMQP_URL}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {memory: 256Mi}
