@@ -39,7 +39,7 @@ jobs:
         run: go tool cover -func=coverage.out | tail -1
 
       - name: Validate Compose file
-        run: docker compose --profile app config -q
+        run: docker compose --profile app --profile dashboard config -q
 
   lint:
     name: Lint

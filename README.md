@@ -10,6 +10,8 @@ It is written in Go and designed around the problems real telemetry systems face
 
 > The devices are simulated, "BACnet-style" sensors (device IDs, metrics, readings). Atrium does not implement the BACnet/IP protocol itself.
 
+![Atrium dashboard](docs/images/dashboard.png)
+
 ## Why this project exists
 
 A large building has hundreds of devices sending a reading every few seconds. Someone has to:
@@ -68,7 +70,7 @@ flowchart LR
 
 ## Tech stack
 
-Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Docker (multi-stage, distroless) · Docker Compose · Kubernetes · GitHub Actions · golang-migrate
+Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Grafana · Docker (multi-stage, distroless) · Docker Compose · Kubernetes · GitHub Actions · golang-migrate
 
 ## Quickstart
 
@@ -99,6 +101,14 @@ make stats          # row counts and queue depth
 ```
 
 RabbitMQ management UI: <http://localhost:15672> (login `guest` / `guest`).
+
+### Live dashboard
+
+```bash
+make grafana        # then open http://localhost:3000
+```
+
+A Grafana dashboard (provisioned from `deploy/grafana/`, no manual setup) shows throughput, devices reporting, open alerts, temperature over time, the hottest devices and recent alerts. It reads straight from PostgreSQL.
 
 ### Or run everything in containers
 
@@ -141,10 +151,10 @@ Base path: `/api/v1`
 
 ```bash
 curl -s localhost:8080/api/v1/devices/dev-001/latest
-# {"id":1042,"device_id":"dev-001","metric":"temperature","value":22.7,"ts":"2026-10-22T12:00:01Z"}
+# {"device_id":"dev-001","metric":"temperature","value":21.909283009191185,"ts":"2026-11-06T09:00:01.625Z"}
 
 curl -s "localhost:8080/api/v1/devices/dev-001/readings?limit=2"
-# {"items":[...],"next_cursor":"2026-10-22T11:59:59.5Z"}
+# {"items":[{"id":121525,"device_id":"dev-001","metric":"temperature","value":21.909283009191185,"ts":"2026-11-06T09:00:01.625Z"},{"id":121425,"device_id":"dev-001","metric":"temperature","value":22.164962549706562,"ts":"2026-11-06T09:00:00.625Z"}],"next_cursor":"2026-11-06T09:00:00.625Z"}
 
 curl -s "localhost:8080/api/v1/alerts?status=open"
 ```
@@ -211,6 +221,7 @@ proto/         gRPC contract
 migrations/    SQL schema (golang-migrate)
 seeds/         sample data
 deploy/k8s/    Kubernetes manifests (tested on kind)
+deploy/grafana/ Grafana provisioning and dashboard
 ```
 
 ## Roadmap
@@ -221,7 +232,7 @@ deploy/k8s/    Kubernetes manifests (tested on kind)
 - [x] RabbitMQ pipeline with confirms, manual acks and dead-lettering
 - [x] Batch processor with alerting
 - [x] Redis cache-aside for latest readings and API rate limiting
-- [ ] Grafana dashboard
+- [x] Grafana dashboard
 - [x] Dockerfiles for every service and full Compose stack
 - [x] GitHub Actions CI (lint, race-detector tests, image build)
 - [x] Kubernetes manifests with health probes
@@ -232,3 +243,5 @@ deploy/k8s/    Kubernetes manifests (tested on kind)
 - Alerts are decided from the newest reading in each batch. After a requeue, an out-of-order delivery could briefly flip an alert's state.
 - A batch that contains an unknown device falls back to single inserts. A production system would cache known device IDs and filter first.
 - The publisher waits for a broker confirm per message. That is simple and safe at this scale, and batching confirms is the next optimisation.
+- On Kubernetes, a long-lived gRPC stream stays on one ingest pod, so the Service does not spread one simulator's load across replicas. A gRPC-aware proxy or client-side balancing would.
+- The Kubernetes setup is for local clusters: RabbitMQ has no persistent volume, credentials are plain development values, and there is no autoscaling or backup.

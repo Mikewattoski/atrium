@@ -124,3 +124,12 @@ k8s-forward:    ## API on http://localhost:18080 (Ctrl+C to stop)
 
 k8s-down:       ## delete the kind cluster
 > kind delete cluster --name atrium
+
+.PHONY: grafana grafana-stop
+
+grafana:        ## Grafana dashboard on http://localhost:3000
+> docker compose --profile dashboard up -d grafana
+> @echo "Dashboard: http://localhost:3000"
+
+grafana-stop:
+> docker compose --profile dashboard stop grafana
