@@ -1,5 +1,7 @@
 # Atrium
 
+[![CI](https://github.com/Mikewattoski/atrium/actions/workflows/ci.yml/badge.svg)](https://github.com/Mikewattoski/atrium/actions/workflows/ci.yml)
+
 **Real-time telemetry for smart buildings.**
 
 Atrium collects readings from building sensors (temperature, HVAC), pushes them through a reliable message pipeline, stores them in PostgreSQL, raises alerts when a value goes out of range, and exposes everything through a REST API.
@@ -66,7 +68,7 @@ flowchart LR
 
 ## Tech stack
 
-Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Docker Compose · golang-migrate
+Go · gRPC / Protocol Buffers · RabbitMQ · PostgreSQL (pgx) · Redis · Gin · Docker (multi-stage, distroless) · Docker Compose · GitHub Actions · golang-migrate
 
 ## Quickstart
 
@@ -97,6 +99,16 @@ make stats          # row counts and queue depth
 ```
 
 RabbitMQ management UI: <http://localhost:15672> (login `guest` / `guest`).
+
+### Or run everything in containers
+
+```bash
+make up-all         # infrastructure + api, ingest, processor, simulator (built from the Dockerfile)
+make logs-app       # follow the service logs
+make down-all       # stop everything
+```
+
+Each service is built from one multi-stage `Dockerfile` into a small non-root distroless image.
 
 ## REST API
 
@@ -193,8 +205,8 @@ deploy/k8s/    Kubernetes manifests (planned)
 - [x] Batch processor with alerting
 - [x] Redis cache-aside for latest readings and API rate limiting
 - [ ] Grafana dashboard
-- [ ] Dockerfiles for every service and full Compose stack
-- [ ] GitHub Actions CI (lint, race-detector tests, image build)
+- [x] Dockerfiles for every service and full Compose stack
+- [x] GitHub Actions CI (lint, race-detector tests, image build)
 - [ ] Kubernetes manifests with health probes
 - [ ] Prometheus metrics
 

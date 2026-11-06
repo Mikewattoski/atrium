@@ -1,0 +1,11 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives

@@ -65,3 +65,18 @@ stats:
 
 redis-cli:
 > docker compose exec redis redis-cli
+
+.PHONY: docker-build up-all down-all logs-app
+
+docker-build:
+> docker compose --profile app build
+
+up-all:
+> docker compose --profile app up -d --build
+> docker compose --profile app ps
+
+down-all:
+> docker compose --profile app down
+
+logs-app:
+> docker compose --profile app logs -f api ingest processor simulator

@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.idea
+.vscode
+bin
+deploy
+migrations
+seeds
+*.md
+Makefile
+docker-compose.yml
+coverage.out

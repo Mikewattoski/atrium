@@ -56,5 +56,78 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        SERVICE: api
+        GO_VERSION: ${GO_VERSION:-1.24}
+    image: atrium-api:local
+    restart: unless-stopped
+    environment: &go-env
+      DATABASE_URL: postgres://${POSTGRES_USER:-bp}:${POSTGRES_PASSWORD:-bp_pass}@postgres:5432/${POSTGRES_DB:-buildingpulse}?sslmode=disable
+      AMQP_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672/
+      REDIS_ADDR: redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  ingest:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        SERVICE: ingest
+        GO_VERSION: ${GO_VERSION:-1.24}
+    image: atrium-ingest:local
+    restart: unless-stopped
+    environment: *go-env
+    ports:
+      - "9090:9090"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  processor:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        SERVICE: processor
+        GO_VERSION: ${GO_VERSION:-1.24}
+    image: atrium-processor:local
+    restart: unless-stopped
+    environment: *go-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  simulator:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        SERVICE: simulator
+        GO_VERSION: ${GO_VERSION:-1.24}
+    image: atrium-simulator:local
+    restart: unless-stopped
+    command: ["-addr", "ingest:9090", "-devices", "100"]
+    depends_on:
+      ingest:
+        condition: service_started
+
 volumes:
   pgdata:
